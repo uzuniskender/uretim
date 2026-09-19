@@ -1361,7 +1361,7 @@ RETURNS jsonb LANGUAGE sql STABLE AS $$
           ORDER BY r.sira DESC) x), '{}')
     || COALESCE((SELECT degerler FROM sistem.tema WHERE kapsam = 'kullanici' AND kapsam_deger = p_kullanici AND mod = p_mod), '{}')
 $$;
-`,L=`-- 0007 · CEKIRDEK TOHUM: her firmada ayni olan baslangic kayitlari
+`,y=`-- 0007 · CEKIRDEK TOHUM: her firmada ayni olan baslangic kayitlari
 --
 -- Firmaya ozel HICBIR sey yok (kod sablonu, kardes eki, urun ailesi -> firma/<ad>/ paketi).
 -- Kaynak: 'kurulum'. Olay defterinde "kurulum" olarak gorunur.
@@ -1517,7 +1517,7 @@ INSERT INTO sistem.alan_tanim (varlik, alan_kodu, etiket, etiket_ceviri, grup, s
   ('cekirdek.kaynak','ise_giris','İşe giriş','{"en":"Start date"}','Kimlik',30,'tarih','ozellik',false,false,false,NULL),
   ('cekirdek.kaynak','marka_model','Marka / model','{"en":"Make / model"}','Makine',10,'metin','ozellik',false,false,false,NULL),
   ('cekirdek.kaynak','bakim_periyodu_gun','Bakım periyodu','{"en":"Maintenance interval"}','Makine',20,'tamsayi','ozellik',false,false,false,'gun');
-`,T=`-- 0008 · CANLI DEDEKTOR MOTORU (ilke 5: canli ya da acikca bayat — burada hep canli)
+`,L=`-- 0008 · CANLI DEDEKTOR MOTORU (ilke 5: canli ya da acikca bayat — burada hep canli)
 --
 -- Eski UYS'de dedektor sayilari bir onbellege yaziliyor, cron ile tazeleniyordu: tasarim geregi
 -- geriden geliyordu ("dedektorler bayat bilgi veriyor"). Burada:
@@ -1839,7 +1839,7 @@ INSERT INTO sistem.dedektor (kod, ad, varlik, onem, aciklama, cozum, sorgu, bagi
    {"tablo":"cekirdek.kalem","kayit":"id"},
    {"tablo":"sistem.kural","sorgu":"SELECT id::text FROM cekirdek.kalem WHERE $1->>'kod' = 'K-KOD-SABLON'"}
  ]$b$);
-`,y=`-- 0009 · ETKI ANALIZI (ilke 9: degisiklikten ONCE etki)
+`,T=`-- 0009 · ETKI ANALIZI (ilke 9: degisiklikten ONCE etki)
 --
 -- "Bir yeri duzeltirken bir yer bozulmasin." Kaydetmeden once ekran sorar:
 --   "Bu kalemi degistirirsen: 14 agac satiri, 3 acik uretim emri satiri, 2 stok hareketi,
@@ -2989,7 +2989,7 @@ INSERT INTO sistem.dedektor (kod, ad, varlik, onem, aciklama, cozum, sorgu, bagi
    {"tablo":"cekirdek.belge_satir","sorgu":"SELECT id::text FROM cekirdek.operasyon_kaydi WHERE belge_satir_id = ($1->>'id')::uuid AND bitis IS NULL AND sure_dk IS NULL"},
    {"tablo":"cekirdek.belge","sorgu":"SELECT ok.id::text FROM cekirdek.operasyon_kaydi ok JOIN cekirdek.belge_satir s ON s.id = ok.belge_satir_id WHERE s.belge_id = ($1->>'id')::uuid AND ok.bitis IS NULL AND ok.sure_dk IS NULL"}
  ]$b$);
-`,G=`-- 0030 · DONEM MALIYETINDE URUNE OZEL AGAC VARYANTI
+`,W=`-- 0030 · DONEM MALIYETINDE URUNE OZEL AGAC VARYANTI
 --
 -- 0026 donem kaydi yalniz GENEL agactan hesapliyordu. Icerigi hangi urun icin yapildigina gore
 -- degisen ara kalemin (0014) urune ozel maliyeti donemde YOKTU: yalniz urune ozel agaci olan ara
@@ -3033,7 +3033,7 @@ LANGUAGE sql STABLE AS $$
   ORDER BY k.kod, bk.kod NULLS FIRST;
 $$;
 GRANT EXECUTE ON FUNCTION cekirdek.maliyet_karsilastir(uuid, uuid) TO authenticated;
-`,W=`-- 0031 · STOK SAYIMI (sayim tutanagi -> sayim farki hareketi)
+`,G=`-- 0031 · STOK SAYIMI (sayim tutanagi -> sayim farki hareketi)
 --
 -- Belge turu 'sayim' ve hareket turu 'sayim_farki' 0005'ten beri vardi ama AKIS yoktu: defterdeki stok
 -- ile raftaki stok ayrisinca duzeltmenin tek yolu elle SQL idi. MRP'nin her karari stok dogruluguna
@@ -5303,7 +5303,213 @@ FROM s CROSS JOIN LATERAL (VALUES
 
 COMMENT ON VIEW sistem.kurulum_kontrol_v IS 'Firma kullanima hazir mi: eksik (akis calismaz) / uyari (sonuc eksik) / tamam (0059, saha satirlari 0060).';
 GRANT SELECT ON sistem.kurulum_kontrol_v TO authenticated;
-`,Ni=`-- FIRMA PAKETI · DEMO A.S.
+`,Ni=`-- 0061 · KURULUM KONTROLUNE TAHMINI DEGER SATIRI
+--
+-- 0059/0060 "program bu akisi calistirabiliyor mu"yu olcuyor. Eksik olan soru: SONUCA guvenilir mi? Ozler
+-- pilotunda (17 Eyl) kurulum tahminlerle acildi — celik 38 TL/kg, istasyon kapasitesi 8 saat, bolum saat
+-- maliyetleri, rotasiz mamullere tek adim montaj — ve bunlarin hepsi olay defterinde "TAHMINI" gerekcesiyle
+-- duruyor (sistem.varsayim_v, 0051/0054). Maliyet ekraninda tek tek "tahmini" rozeti gorunuyor ama kurulumu
+-- yapan kisi TOPLAM resmi hic gormuyor: "bu firmada 1.683 deger tahmin" cumlesini kimse soylemiyor.
+--
+-- Bu satir onu soyluyor. Durum 'uyari': program calisir, sonuc gercek veri gelince DEGISIR. Tahmini deger
+-- birakmak gecerli bir kurulum bicimidir (Serdar 17 Eyl: "varsayimla ilerle"), gizlenmesi degil.
+--
+-- Maliyet: varsayim_v tahmini KAYIT sayisiyla olceklenir (olay tablosunun tamamiyla degil; olay_varsayim_idx
+-- uzerinden aday kayitlar taranir). Ozler'de 1.683 kayitta 59 ms. Ozet adimi kurulumda acilan bir ekran,
+-- sicak yol degil.
+
+SELECT sistem.baglam_kur('kurulum', NULL, '0061_kurulum_kontrol_varsayim', 'kurulum kontrolu: tahmini deger satiri');
+
+CREATE OR REPLACE VIEW sistem.kurulum_kontrol_v WITH (security_invoker = true) AS
+WITH s AS (
+  SELECT
+    (SELECT count(*) FROM sistem.firma) AS firma,
+    (SELECT count(*) FROM cekirdek.depo WHERE aktif) AS depo,
+    (SELECT count(*) FROM cekirdek.kalem WHERE aktif) AS kalem,
+    (SELECT count(*) FROM cekirdek.is_merkezi WHERE aktif) AS istasyon,
+    (SELECT count(*) FROM cekirdek.operasyon WHERE aktif) AS operasyon,
+    -- kapasite ve saat maliyeti yalniz KULLANILAN istasyonda anlamli (rota adimi, varsayilan ya da bolum/istasyon bagi)
+    (SELECT count(*) FROM cekirdek.is_merkezi m WHERE m.aktif AND m.gunluk_kapasite_saat IS NULL
+       AND (EXISTS (SELECT 1 FROM cekirdek.rota_adim ra WHERE ra.is_merkezi_id = m.id) OR EXISTS (SELECT 1 FROM cekirdek.operasyon oo WHERE oo.varsayilan_is_merkezi_id = m.id) OR EXISTS (SELECT 1 FROM cekirdek.operasyon_yapilabilir_istasyon_v yy WHERE yy.is_merkezi_id = m.id AND yy.neden <> 'tum'))) AS kapasitesiz,
+    (SELECT count(*) FROM cekirdek.is_merkezi m JOIN cekirdek.is_merkezi_maliyet_v v ON v.is_merkezi_id = m.id
+      WHERE m.aktif AND v.saat_maliyeti IS NULL
+        AND (EXISTS (SELECT 1 FROM cekirdek.rota_adim ra WHERE ra.is_merkezi_id = m.id) OR EXISTS (SELECT 1 FROM cekirdek.operasyon oo WHERE oo.varsayilan_is_merkezi_id = m.id) OR EXISTS (SELECT 1 FROM cekirdek.operasyon_yapilabilir_istasyon_v yy WHERE yy.is_merkezi_id = m.id AND yy.neden <> 'tum'))) AS saat_maliyetsiz,
+    (SELECT count(*) FROM cekirdek.rota r JOIN cekirdek.rota_adim a ON a.rota_id = r.id
+       JOIN cekirdek.operasyon o ON o.id = a.operasyon_id AND o.rol <> 'dis_tedarik'
+      WHERE r.durum = 'aktif' AND a.is_merkezi_id IS NULL AND o.varsayilan_is_merkezi_id IS NULL
+        AND NOT EXISTS (SELECT 1 FROM cekirdek.operasyon_yapilabilir_istasyon_v y WHERE y.operasyon_id = o.id AND y.neden <> 'tum')) AS istasyonsuz_adim,
+    (SELECT count(*) FROM cekirdek.kalem k
+      WHERE k.aktif AND k.tip NOT IN ('mamul','yari_mamul')
+        AND EXISTS (SELECT 1 FROM cekirdek.urun_agaci_satir st JOIN cekirdek.urun_agaci a ON a.id = st.agac_id AND a.durum = 'aktif' WHERE st.bilesen_kalem_id = k.id)
+        AND NOT EXISTS (SELECT 1 FROM cekirdek.urun_agaci a WHERE a.kalem_id = k.id AND a.durum = 'aktif')
+        AND (k.ozellik ->> 'standart_maliyet') IS NULL AND (k.ozellik ->> 'son_alis_fiyati') IS NULL
+        AND NOT EXISTS (SELECT 1 FROM cekirdek.tedarik_kosulu t WHERE t.kalem_id = k.id AND t.varsayilan AND t.aktif AND t.birim_fiyat IS NOT NULL)) AS fiyatsiz,
+    (SELECT count(*) FROM sistem.bulgu WHERE durum = 'acik' AND dedektor_kod IN ('D-URETILEN-AGACSIZ','D-AGACTA-KULLANILAN-AGACSIZ')) AS agacsiz,
+    (SELECT count(*) FROM sistem.bulgu WHERE durum = 'acik' AND dedektor_kod IN ('D-URETILEN-ROTASIZ')) AS rotasiz,
+    (SELECT count(*) FROM sistem.bulgu WHERE durum = 'acik' AND dedektor_kod = 'D-FASON-FIYAT-YOK') AS fason_fiyatsiz,
+    (SELECT count(*) FROM sistem.bulgu b JOIN sistem.dedektor d ON d.kod = b.dedektor_kod WHERE b.durum = 'acik' AND d.onem = 'kritik') AS kritik,
+    (SELECT count(*) FROM sistem.kullanici ku WHERE ku.aktif
+       AND EXISTS (SELECT 1 FROM sistem.rol r WHERE r.kod = ANY (ku.roller) AND '*' = ANY (r.izinler))) AS yonetici,
+    -- SAHA (0060)
+    (SELECT count(*) FROM cekirdek.durus_nedeni WHERE aktif) AS durus_nedeni,
+    (SELECT count(*) FROM sistem.kullanici ku WHERE ku.aktif AND ku.kaynak_id IS NULL
+       AND EXISTS (SELECT 1 FROM sistem.rol r WHERE r.kod = ANY (ku.roller) AND 'yazma:operasyon.*' = ANY (r.izinler))
+       AND NOT EXISTS (SELECT 1 FROM sistem.rol r WHERE r.kod = ANY (ku.roller) AND '*' = ANY (r.izinler))) AS kaynaksiz_operator,
+    -- GUVEN (0061): kac deger gercek veri degil tahmin
+    (SELECT count(*) FROM sistem.varsayim_v) AS varsayim
+)
+SELECT x.sira, x.konu, x.baslik,
+       CASE WHEN x.sayi IS NULL THEN 'tamam' WHEN x.eksik_mi THEN 'eksik' ELSE 'uyari' END AS durum,
+       x.sayi, x.aciklama, x.cozum
+FROM s CROSS JOIN LATERAL (VALUES
+  (10, 'firma', 'Firma bilgisi', CASE WHEN s.firma = 0 THEN 1 END, true,
+   'Firma adı, para birimi ve saat dilimi tanımlı değil.', 'Kurulum sihirbazı 1. adım.'),
+  (20, 'depo', 'Depo', CASE WHEN s.depo = 0 THEN 1 END, true,
+   'Aktif depo yok: mal kabul, üretim tamamlama ve sevk çalışmaz.', 'Depo ekranından en az bir depo ekleyin.'),
+  (30, 'kalem', 'Malzemeler', CASE WHEN s.kalem = 0 THEN 1 END, true,
+   'Hiç malzeme kartı yok.', 'Kurulum sihirbazı Veriler adımında Malzemeler dosyasını yükleyin.'),
+  (40, 'istasyon', 'İş merkezleri', CASE WHEN s.istasyon = 0 THEN 1 END, true,
+   'Hiç iş merkezi (istasyon) yok: rota, kapasite ve saha çalışmaz.', 'Veriler adımında İş merkezleri dosyasını yükleyin.'),
+  (50, 'operasyon', 'Operasyonlar', CASE WHEN s.operasyon = 0 THEN 1 END, true,
+   'Hiç operasyon yok: rota adımı tanımlanamaz.', 'Veriler adımında Operasyonlar dosyasını yükleyin.'),
+  (60, 'agac', 'Ürün ağaçları', NULLIF(s.agacsiz, 0), false,
+   'Üretilen kalemlerde ürün ağacı eksik: MRP malzeme ihtiyacını hesaplayamaz.', 'Veri kalitesi ekranındaki ağaçsız kalemleri Reçete sekmesinden tamamlayın ya da planlanmaz işaretleyin.'),
+  (70, 'rota', 'Rotalar', NULLIF(s.rotasiz, 0), false,
+   'Ağacı olan üretilen kalemlerde rota eksik: kapasite, saha ve işçilik maliyeti bu kalemleri görmez.', 'Malzeme kartında Rota sekmesinden iş adımı ekleyin.'),
+  (80, 'rota_istasyon', 'Rota adımı istasyonu', NULLIF(s.istasyonsuz_adim, 0), false,
+   'Rota adımında iş merkezi yok ve operasyonun ne varsayılan istasyonu ne bölüm/istasyon bağı var: adım hiçbir operatörün listesinde görünmez.', 'Bölümler ekranından operasyona bölüm ya da istasyon bağlayın.'),
+  (90, 'kapasite', 'İstasyon kapasitesi', NULLIF(s.kapasitesiz, 0), false,
+   'Kullanılan istasyonlardan günlük kapasitesi boş olanlar kapasite çizelgesinde sınırsız sayılır; gecikme hesabı anlamsız olur.', 'İş merkezleri dosyasında günlük kapasite (saat) girin.'),
+  (100, 'saat_maliyeti', 'Saat maliyeti', NULLIF(s.saat_maliyetsiz, 0), false,
+   'Kullanılan istasyonlarda saat maliyeti ne istasyonda ne bölümünde tanımlı: bu istasyonlardaki işçilik maliyete girmez.', 'Bölümler ekranında bölüm saat maliyetini girin.'),
+  (110, 'fiyat', 'Satın alma fiyatları', NULLIF(s.fiyatsiz, 0), false,
+   'Reçetelerde kullanılan satın alma kalemlerinin fiyatı yok: ürün maliyeti boş çıkar.', 'Malzemeler dosyasında Standart maliyet sütununu ya da Tedarik koşulları dosyasını doldurun.'),
+  (120, 'fason', 'Fason fiyatları', NULLIF(s.fason_fiyatsiz, 0), false,
+   'Dış tedarik adımlarının fiyatı çıkmıyor: ürün maliyeti boş kalır.', 'Operasyon kartına fason fiyatı (adet ya da kg) girin.'),
+  (130, 'kritik', 'Kritik veri bulguları', NULLIF(s.kritik, 0), false,
+   'Açık kritik bulgu var: planlama sonucu eksik ya da yanlış olabilir.', 'Veri kalitesi ekranında kritik bulguları kapatın.'),
+  (140, 'yonetici', 'Tam yetkili kullanıcı', CASE WHEN s.yonetici = 0 THEN 1 END, false,
+   'Tam yetkili aktif kullanıcı yok (sunucu kurulumunda gerekir; tarayıcı kipinde yetki denetimi yoktur).', 'Kullanıcılar ekranından yönetici rolü verin.'),
+  (150, 'durus_nedeni', 'Duruş nedenleri', CASE WHEN s.durus_nedeni = 0 THEN 1 END, false,
+   'Aktif duruş nedeni yok: sahada duruş bildirilemez, kayıp süre görünmez ve OEE kullanılabilirliği olduğundan iyi çıkar.', 'Duruş ve problem ekranında "Önerilen listeyi ekle" ile başlayın.'),
+  (160, 'operator_kaynak', 'Operatör hesabı bağı', NULLIF(s.kaynaksiz_operator, 0), false,
+   'Operatör hesabı bir kaynağa (operatör/makine kartı) bağlı değil: sahada "Ben" seçimi boş kalır, kayıt kimseye yazılmaz, operatör verimliliği ve vardiya raporu boş çıkar.', 'Kullanıcılar ekranında "Saha kaynağı" sütunundan hesabı kaynağa bağlayın.'),
+  (170, 'varsayim', 'Tahmini değerler', NULLIF(s.varsayim, 0), false,
+   'Bu kadar değer gerçek veri değil tahmin: maliyet, kapasite ve teslim tarihleri gerçek değerler girilince değişir. Kurulumu tahminle açmak geçerlidir; yalnız hangi sonucun neye dayandığı bilinsin.', 'Veri kalitesi ekranının Tahmini değerler bölümünde listelenir; hesap izinde "tahmini" rozetiyle görünür.')
+) AS x(sira, konu, baslik, sayi, eksik_mi, aciklama, cozum);
+
+COMMENT ON VIEW sistem.kurulum_kontrol_v IS 'Firma kullanima hazir mi: eksik (akis calismaz) / uyari (sonuc eksik ya da tahmine dayali) / tamam (0059, saha 0060, tahmini deger 0061).';
+GRANT SELECT ON sistem.kurulum_kontrol_v TO authenticated;
+`,yi=`-- 0062 · GERI AL: STOGU EKSIYE DUSUREN GERI ALMA DURDURULUR
+--
+-- Olcum (19 Eyl 2026, demo veri): mal kabul -> malzeme uretimde tuketildi -> mal kabul islemi geri alindi.
+-- 0016'dan beri stok hareketi ters kayitla dengeleniyor ama sonucun ne oldugu kontrol edilmiyordu: stok
+-- sessizce -19,32'ye dustu, hicbir hata cikmadi. Ileri yonde koruma var (cikis yazilmadan once "stok yeterli
+-- mi"), geri alma tarafinda hic yoktu; SQL'de negatif stok kontrolu hicbir yerde yoktu.
+--
+-- Bundan sonra: ters kayit yazilan her (kalem, depo, lot) bakiyesi dongu sonunda kontrol edilir, eksiye
+-- dusen varsa islem Turkce mesajla durur. p_zorla ile yine yapilabilir (canlida temizlik icin bilincli karar).
+-- Kontrol yalniz geri alma yolunda: her stok hareketine tetikleyici koymak butun yazmalari yavaslatirdi,
+-- acik olan yer burasiydi. Govde 0031'in gövdesidir (0016 + 0021 + 0031 birikimi korunur).
+
+SELECT sistem.baglam_kur('kurulum', NULL, '0062_geri_al_negatif_stok', 'geri al: negatif stok korumasi');
+
+CREATE OR REPLACE FUNCTION sistem.islem_geri_al(p_grup uuid, p_gerekce text DEFAULT NULL, p_zorla boolean DEFAULT false)
+RETURNS uuid LANGUAGE plpgsql
+-- 0036: arama yolu sabit (SECURITY INVOKER -> ''); CREATE OR REPLACE bunu dusurdugu icin burada tekrar veriliyor.
+SET search_path = ''
+AS $$
+DECLARE
+  o        sistem.olay%ROWTYPE;
+  v_yeni_grup uuid;
+  v_simdiki jsonb;
+  v_sayi   int := 0;
+  v_dokunulan uuid[] := '{}';   -- ters kayit yazilan stok hareketleri
+  v_eksik  text;
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM sistem.olay WHERE islem_grubu = p_grup) THEN
+    RAISE EXCEPTION 'Islem grubu bulunamadi: %', p_grup;
+  END IF;
+
+  v_yeni_grup := sistem.baglam_kur('geri_al', sistem.baglam('kullanici'), p_grup::text,
+                                   COALESCE(p_gerekce, 'islem grubu geri alindi'));
+
+  FOR o IN SELECT * FROM sistem.olay WHERE islem_grubu = p_grup ORDER BY id DESC LOOP
+    EXECUTE format('SELECT to_jsonb(t) FROM %s t WHERE %I::text = $1', o.varlik, o.anahtar_alan)
+      INTO v_simdiki USING o.kayit_id;
+
+    IF o.islem = 'ekle' THEN
+      IF v_simdiki IS NULL THEN CONTINUE; END IF;
+      IF o.varlik = 'cekirdek.stok_hareket' THEN
+        -- Defter: silinmez, ters kayitla dengelenir.
+        IF EXISTS (SELECT 1 FROM cekirdek.stok_hareket WHERE ters_hareket_id = o.kayit_id::uuid) THEN
+          RAISE EXCEPTION 'Geri alinamaz: stok hareketi % zaten ters kayitla duzeltilmis.', o.kayit_id;
+        END IF;
+        PERFORM cekirdek.stok_hareket_ters_kayit(o.kayit_id::uuid, 'geri alındı: işlem ' || p_grup::text);
+        v_dokunulan := v_dokunulan || o.kayit_id::uuid;
+      ELSIF o.varlik = 'cekirdek.lot' AND EXISTS (SELECT 1 FROM cekirdek.stok_hareket WHERE lot_id = o.kayit_id::uuid) THEN
+        -- Lot defterde geciyor (asil + ters kayit): silinmez, stoku 0 olarak kalir.
+        NULL;
+      ELSIF o.varlik = 'cekirdek.belge_satir' AND EXISTS (SELECT 1 FROM cekirdek.stok_hareket WHERE belge_satir_id = o.kayit_id::uuid) THEN
+        -- 0031: ayni islemde acilan belge satiri defterde geciyor (asil + ters kayit): silinmez, net hareketi 0.
+        NULL;
+      ELSIF o.varlik = 'cekirdek.belge' AND EXISTS (
+          SELECT 1 FROM cekirdek.stok_hareket h JOIN cekirdek.belge_satir s ON s.id = h.belge_satir_id WHERE s.belge_id = o.kayit_id::uuid) THEN
+        NULL;
+      ELSE
+        EXECUTE format('DELETE FROM %s WHERE %I::text = $1', o.varlik, o.anahtar_alan) USING o.kayit_id;
+      END IF;
+
+    ELSIF o.islem = 'sil' THEN
+      IF v_simdiki IS NOT NULL AND NOT p_zorla THEN
+        RAISE EXCEPTION 'Geri alinamaz: %/% silindikten sonra yeniden olusturulmus.', o.varlik, o.kayit_id;
+      END IF;
+      EXECUTE format('INSERT INTO %1$s SELECT * FROM jsonb_populate_record(NULL::%1$s, $1)', o.varlik) USING o.eski;
+
+    ELSE -- degistir
+      IF v_simdiki IS NULL THEN
+        RAISE EXCEPTION 'Geri alinamaz: %/% artik yok.', o.varlik, o.kayit_id;
+      END IF;
+      IF (v_simdiki -> o.alan) IS DISTINCT FROM o.yeni AND NOT p_zorla THEN
+        RAISE EXCEPTION 'Geri alinamaz: %/%.% bu islemden sonra degistirilmis (simdi %, islem %).',
+          o.varlik, o.kayit_id, o.alan, v_simdiki -> o.alan, o.yeni;
+      END IF;
+      EXECUTE format(
+        'UPDATE %1$s SET %2$I = (jsonb_populate_record(NULL::%1$s, $1)).%2$I WHERE %3$I::text = $2',
+        o.varlik, o.alan, o.anahtar_alan)
+        USING jsonb_build_object(o.alan, o.eski), o.kayit_id;
+    END IF;
+    v_sayi := v_sayi + 1;
+  END LOOP;
+
+  -- 0062: geri alinan hareketler baska islemlerde kullanilmis olabilir. Ters kayitlardan sonra dokunulan her
+  -- (kalem, depo, lot) bakiyesine bakilir; biri eksiye dusuyorsa hicbir sey yapilmaz (her sey geri sarilir).
+  -- Yuvarlama payi (5e-7, cekirdek cikis yuvarlamasiyla ayni) kadar eksi, eksi sayilmaz.
+  IF array_length(v_dokunulan, 1) IS NOT NULL AND NOT p_zorla THEN
+    SELECT string_agg(format('%s: %s%s', x.kod, round(x.bakiye, 6),
+                             CASE WHEN x.lot_no IS NOT NULL THEN ' (lot ' || x.lot_no || ')' ELSE '' END), ' · ' ORDER BY x.kod)
+      INTO v_eksik
+    FROM (
+      SELECT k.kod, l.lot_no, sum(h2.miktar) AS bakiye
+      FROM cekirdek.stok_hareket h
+      JOIN cekirdek.stok_hareket h2
+        ON h2.kalem_id = h.kalem_id AND h2.depo_id = h.depo_id AND h2.lot_id IS NOT DISTINCT FROM h.lot_id
+      JOIN cekirdek.kalem k ON k.id = h.kalem_id
+      LEFT JOIN cekirdek.lot l ON l.id = h.lot_id
+      WHERE h.id = ANY (v_dokunulan)
+      GROUP BY h.kalem_id, h.depo_id, h.lot_id, k.kod, l.lot_no
+      HAVING sum(h2.miktar) < -5e-7
+    ) x;
+
+    IF v_eksik IS NOT NULL THEN
+      RAISE EXCEPTION 'Geri alınamaz: stok eksiye düşerdi — %. Bu malzemeyi kullanan işlemleri önce geri alın (zorunluysa zorla geri alma).', v_eksik
+        USING ERRCODE = 'check_violation';
+    END IF;
+  END IF;
+
+  RETURN v_yeni_grup;
+END $$;
+`,Li=`-- FIRMA PAKETI · DEMO A.S.
 --
 -- Bos kurulumun ustune ornek bir firma: ekran iskeletini gercek hacimde (≈3.000 kalem) denemek,
 -- canli dedektor rozetlerini ve hesap izini gostermek icin. Veri DETERMINISTIKTIR (random yok):
@@ -5446,7 +5652,7 @@ SELECT TIMESTAMPTZ '2026-09-01 08:00+03', s.kalem_id, d.id, s.miktar, 'acilis', 
 FROM cekirdek.belge_satir s
 JOIN cekirdek.belge b ON b.id = s.belge_id AND b.no = 'ACL-0001'
 JOIN cekirdek.depo d ON d.kod = 'ANA';
-`,Li=`-- FIRMA PAKETI · DEMO A.S. · ROTA VE KAPASITE
+`,Ti=`-- FIRMA PAKETI · DEMO A.S. · ROTA VE KAPASITE
 --
 -- Operasyonlar, her yari mamul ve mamul icin aktif rota, bir resmi tatil. Deterministik (random yok).
 -- Kapasite 0001'deki is merkezlerinden: KES 16 sa × 2 · BUK 8 sa × 1 · KYN 16 sa × 4 · MON 8 sa × 6.
@@ -5491,13 +5697,13 @@ JOIN cekirdek.operasyon o ON o.kod = a.op;
 INSERT INTO cekirdek.takvim_gun (tarih, tur, aciklama) VALUES
   ('2026-10-29', 'tatil', 'Cumhuriyet Bayramı'),
   ('2026-10-28', 'yarim_gun', 'Cumhuriyet Bayramı arifesi');
-`,Ti=`-- FIRMA PAKETI · DEMO A.S. · FASON SURESI (sema 0018)
+`,ci=`-- FIRMA PAKETI · DEMO A.S. · FASON SURESI (sema 0018)
 -- Boya fasoncusu isi 3 is gununde teslim eder (adet basina dakika maliyet icin kalir).
 SELECT sistem.baglam_kur('kurulum', NULL, 'firma:demo/0003', 'Demo A.S. fason boya suresi');
 
 UPDATE cekirdek.rota_adim a SET dis_tedarik_gun = 3
 FROM cekirdek.operasyon o WHERE o.id = a.operasyon_id AND o.kod = 'BOYA';
-`,yi=`-- FIRMA PAKETI · DEMO A.S. · TEDARIKCILER VE TEDARIK KOSULLARI (sema 0019)
+`,gi=`-- FIRMA PAKETI · DEMO A.S. · TEDARIKCILER VE TEDARIK KOSULLARI (sema 0019)
 --
 -- Uc tedarikci; sac ve sarf kalemlerine deterministik kosul. Sacin bir kismi iki tedarikciden alinir
 -- (biri varsayilan). Sac tonla satilir: asgari 0,5 ton, 0,1 ton katlari.
@@ -5531,12 +5737,12 @@ INSERT INTO cekirdek.tedarik_kosulu (kalem_id, partner_id, birim, birim_fiyat, t
 SELECT k.id, p.id, k.stok_birimi, 40 + (substr(k.kod, 4)::int % 9) * 15, 3, 10, true
 FROM cekirdek.kalem k, cekirdek.partner p
 WHERE k.kod LIKE 'SR-%' AND p.kod = 'T-003';
-`,ci=`-- FIRMA PAKETI · DEMO A.S. · FASON BOYA FIYATI (sema 0020)
+`,Ri=`-- FIRMA PAKETI · DEMO A.S. · FASON BOYA FIYATI (sema 0020)
 SELECT sistem.baglam_kur('kurulum', NULL, 'firma:demo/0005', 'Demo A.S. fason boya fiyati');
 
 UPDATE cekirdek.rota_adim a SET dis_tedarik_birim_fiyat = 18
 FROM cekirdek.operasyon o WHERE o.id = a.operasyon_id AND o.kod = 'BOYA';
-`,gi=`-- DEMO A.S. · LOT ve KALITE
+`,Ai=`-- DEMO A.S. · LOT ve KALITE
 -- Litre birimli sarf malzemeler (boya, yag, tiner gibi) lot takipli, giris muayeneli, raf omru 365 gun, MRP ile.
 -- Mal kabulde lot acilir ve karantinaya girer; Lot ve kalite ekraninda karar verilir.
 
@@ -5547,7 +5753,7 @@ SET lot_takibi = true,
     planlama_yontemi = 'mrp',   -- siparise gore alinir (min-max oneri uretmez; lot akisi ekranda denenebilsin)
     ozellik = ozellik || '{"giris_muayenesi": true, "raf_omru_gun": 365}'
 WHERE tip = 'sarf' AND stok_birimi = 'lt';
-`,Ri=`-- DEMO A.S. · ACILIS STOKU DEGERI
+`,Oi=`-- DEMO A.S. · ACILIS STOKU DEGERI
 -- Gercek firmada acilis stoku degeriyle gelir. Demoda acilis satirlarina varsayilan tedarikci fiyati
 -- (tedarikci biriminden acilis satiri birimine cevrilerek) yazilir; boylece stok degeri ve gerceklesen
 -- maliyet bos kalmaz. Varsayilan kosulu olmayan kalemin acilisi fiyatsiz kalir (bilerek: "değeri bilinmiyor").
@@ -5559,7 +5765,7 @@ SET birim_fiyat = round(t.birim_fiyat * cekirdek.miktar_cevir(s.kalem_id, 1, s.b
 FROM cekirdek.belge b, cekirdek.tedarik_kosulu t
 WHERE b.id = s.belge_id AND b.no = 'ACL-0001'
   AND t.kalem_id = s.kalem_id AND t.varsayilan AND t.aktif AND t.para_birimi = 'TRY' AND t.birim_fiyat IS NOT NULL;
-`,Ai=`-- FIRMA PAKETI · DEMO A.S. · DOVIZ KURU + GENEL GIDER + MALIYET DONEMI
+`,Ii=`-- FIRMA PAKETI · DEMO A.S. · DOVIZ KURU + GENEL GIDER + MALIYET DONEMI
 --
 -- Urunun maliyet tarafi (sema 0023-0027) demoda hic gorunmuyordu: kur tablosu bos, genel gider
 -- orani yok, maliyet donemi yok. Demoyu acan kisi bu ozelliklerin VAR OLDUGUNU bile anlamiyordu.
@@ -5591,7 +5797,7 @@ INSERT INTO cekirdek.kur (para_birimi, tarih, kur, tur, kaynak) VALUES
 -- Acik maliyet donemi: ekranda "Hesapla" ve "Dondur" denenebilsin.
 INSERT INTO cekirdek.maliyet_donemi (kod, ad, baslangic, bitis, aciklama)
 VALUES ('2026-09', 'Eylül 2026', '2026-09-01', '2026-09-30', 'Demo: Hesapla ile doldurun, Dondur ile kilitleyin.');
-`,Oi=`-- FIRMA PAKETI · DEMO A.S. · BILESENIN ISE GIRDIGI ADIM (fire hesabi, sema 0024)
+`,bi=`-- FIRMA PAKETI · DEMO A.S. · BILESENIN ISE GIRDIGI ADIM (fire hesabi, sema 0024)
 --
 -- Demo agaclarinin hicbir satirinda "adim sirasi" yoktu: her bilesen ilk adimda giriyordu ve fire
 -- bildiriminin "o adima kadar giren malzeme" kurali demoda HIC gorunmuyordu.
@@ -5639,7 +5845,7 @@ SELECT TIMESTAMPTZ '2026-09-01 08:00+03', s.kalem_id, d.id, s.miktar, 'acilis', 
 FROM cekirdek.belge_satir s
 JOIN cekirdek.belge b ON b.id = s.belge_id AND b.no = 'ACL-0002'
 JOIN cekirdek.depo d ON d.kod = 'ANA';
-`,Ii=`-- FIRMA PAKETI · DEMO A.S. · ORNEK TEKLIF VE ACIK SAYIM (sema 0031, 0032)
+`,Si=`-- FIRMA PAKETI · DEMO A.S. · ORNEK TEKLIF VE ACIK SAYIM (sema 0031, 0032)
 --
 -- Teklif ve sayim demoda hic gorunmuyordu. Ikisi de STOK HAREKETI URETMEZ:
 --   * teklif MRP'ye talep olarak girmez (belge_satir_kalan'da yok),
@@ -5684,7 +5890,7 @@ CROSS JOIN LATERAL (
   ORDER BY k.kod LIMIT 3
 ) s
 WHERE b.no = 'SY-00001';
-`,bi=`-- FIRMA PAKETI · DEMO A.S. · SAHA: OPERATORLER VE DURUS NEDENLERI (sema 0022, 0037)
+`,pi=`-- FIRMA PAKETI · DEMO A.S. · SAHA: OPERATORLER VE DURUS NEDENLERI (sema 0022, 0037)
 --
 -- Saha ekraninda "Ben" secimi ve duruş girisi demoda bos kaliyordu: kaynak ve durus nedeni yoktu.
 --   * Her is merkezine bir operator (saat maliyeti BOS: maliyet eskisi gibi is merkezinden gelir,
@@ -5708,7 +5914,7 @@ INSERT INTO cekirdek.durus_nedeni (kod, ad, tur, sira) VALUES
   ('AYAR',     'Kalıp / ayar değişimi', 'planli',  50),
   ('BAKIM',    'Planlı bakım',          'planli',  60),
   ('MOLA',     'Mola / toplantı',       'planli',  70);
-`,Si=`-- FIRMA PAKETI · DEMO A.S. · KESIM PLANI VE ARTIK (sema 0038, 0040)
+`,Ui=`-- FIRMA PAKETI · DEMO A.S. · KESIM PLANI VE ARTIK (sema 0038, 0040)
 --
 -- Kesim ekrani demoda bostu: kesim rollu adimi olan acik uretim emri yoktu. YENI KALEM EKLENMEZ, mevcutlar kullanilir:
 --   * KES is merkezi: kesim payi 3 mm.
@@ -5772,7 +5978,7 @@ JOIN cekirdek.lot l ON l.kalem_id = k.id AND l.lot_no = 'AR-00001'
 JOIN cekirdek.belge b ON b.tur = 'sayim' AND b.no = 'AR-00001'
 JOIN cekirdek.belge_satir s ON s.belge_id = b.id
 WHERE k.kod = 'HM-00006';
-`,pi=`-- FIRMA PAKETI · OZLER
+`,Ci=`-- FIRMA PAKETI · OZLER
 --
 -- Ozler'e ozgu olan HER SEY burada; cekirdek sema bunlari bilmez.
 -- Yeni firmada bu dosyanin karsiligi kurulum sihirbazinda doldurulur.
@@ -5826,7 +6032,7 @@ INSERT INTO sistem.alan_tanim (varlik, alan_kodu, etiket, grup, sira, tip, depol
 -- Ozler'de acik olan cekirdek alanlar
 UPDATE sistem.alan_tanim SET gorunur = true
 WHERE varlik = 'cekirdek.kalem' AND alan_kodu IN ('cap','ic_cap','yuzey_alani','teknik_resim');
-`,Ui=`-- FIRMA PAKETI · OZLER · KOD SABLONU YALNIZ URETILEN KALEMLER ICIN (sema 0045)
+`,Di=`-- FIRMA PAKETI · OZLER · KOD SABLONU YALNIZ URETILEN KALEMLER ICIN (sema 0045)
 --
 -- UYS kural #49 (mamul: 8 hane urun + 1 hane yuzey) ve #52 (yari mamul: YMH/YMM/YMK oneki) yalniz uretilen
 -- kalemleri tarif eder. Satin alinan hammadde ve sarf kodlari (H..., T..., S..., Y..., ZZ..., SARF...) tedarikci
@@ -5836,7 +6042,7 @@ SELECT sistem.baglam_kur('kurulum', NULL, 'firma:ozler/0002', 'Ozler kod sablonu
 
 UPDATE sistem.kural SET tanim = tanim || '{"tipler":["mamul","yari_mamul"]}'::jsonb
 WHERE kod = 'K-KOD-SABLON';
-`,Ci=`-- FIRMA PAKETI · OZLER · MAMUL KODU DOGRULANMAZ, YALNIZ AYRISTIRILIR (5b karari, 17 Eyl)
+`,zi=`-- FIRMA PAKETI · OZLER · MAMUL KODU DOGRULANMAZ, YALNIZ AYRISTIRILIR (5b karari, 17 Eyl)
 --
 -- Ozler'in iki mamul kod sistemi var: tamamen sayisal 9 hane (8 hane urun + 1 hane yuzey, UYS kural #49) ve harf
 -- iceren aile kodlari (SMX Slabmax, 140SD/140SM, RAP, GBM...). Harfli kodlar mesrudur: aktif kart, aktif recete.
@@ -5848,5 +6054,5 @@ SELECT sistem.baglam_kur('kurulum', NULL, 'firma:ozler/0003', 'Ozler mamul kodu 
 
 UPDATE sistem.kural SET tanim = jsonb_set(tanim, '{tipler}', '["yari_mamul"]'::jsonb)
 WHERE kod = 'K-KOD-SABLON';
-`;function Di(i){return i.replace(/\r\n/g,`
-`)}const zi=/^(\d{4})_[a-z0-9_]+\.sql$/;async function vi(i){const{rows:n}=await i.query("SELECT to_regclass('sistem.sema_surum') IS NOT NULL AS var");if(!n[0].var)return new Map;const a=await i.query("SELECT surum, checksum FROM sistem.sema_surum");return new Map(a.rows.map(r=>[r.surum,r.checksum]))}async function t(i,n){const a={uygulanan:[],atlanan:[]},r=await vi(i);for(const e of n){const l=r.get(e.surum);if(l){if(l!==e.checksum)throw new Error(`Sema surumu ${e.surum} uygulandiktan sonra DEGISTIRILMIS (checksum farkli). Uygulanmis migration yeniden yazilmaz; degisikligi yeni bir dosyayla yapin.`);a.atlanan.push(e.surum);continue}await i.exec("BEGIN");try{await i.exec(e.icerik),await i.query("INSERT INTO sistem.sema_surum (surum, checksum) VALUES ($1, $2)",[e.surum,e.checksum]),await i.exec("COMMIT")}catch(k){throw await i.exec("ROLLBACK"),k.message=`${e.surum} uygulanamadi: ${k.message}`,k}a.uygulanan.push(e.surum)}return a}const Fi=Object.assign({"../../../../packages/sema/migrations/0001_sistem_temel.sql":d,"../../../../packages/sema/migrations/0002_olay_defteri.sql":m,"../../../../packages/sema/migrations/0003_kural_sozlugu.sql":o,"../../../../packages/sema/migrations/0004_alan_katalogu.sql":u,"../../../../packages/sema/migrations/0005_cekirdek_varliklar.sql":_,"../../../../packages/sema/migrations/0006_gorunum_tema.sql":N,"../../../../packages/sema/migrations/0007_tohum.sql":L,"../../../../packages/sema/migrations/0008_canli_dedektor.sql":T,"../../../../packages/sema/migrations/0009_etki_analizi.sql":y,"../../../../packages/sema/migrations/0010_olay_defteri_yetki.sql":c,"../../../../packages/sema/migrations/0011_koyu_tema_cizgi_kontrasti.sql":g,"../../../../packages/sema/migrations/0012_katalog_zorunlu_kolonlar.sql":R,"../../../../packages/sema/migrations/0013_dedektor_indeks_kosulu.sql":A,"../../../../packages/sema/migrations/0014_urun_agaci_baglam.sql":O,"../../../../packages/sema/migrations/0015_emir_baglami_ve_satir_kalani.sql":I,"../../../../packages/sema/migrations/0016_geri_al_defter_ters_kayit.sql":b,"../../../../packages/sema/migrations/0017_operasyon_katalogu.sql":S,"../../../../packages/sema/migrations/0018_rota_adim_fason_gun.sql":p,"../../../../packages/sema/migrations/0019_tedarik_kosulu.sql":U,"../../../../packages/sema/migrations/0020_rota_adim_fason_fiyat.sql":C,"../../../../packages/sema/migrations/0021_lot_kalite_izlenebilirlik.sql":D,"../../../../packages/sema/migrations/0022_operasyon_kaydi.sql":z,"../../../../packages/sema/migrations/0023_kur.sql":v,"../../../../packages/sema/migrations/0024_fire_malzeme_cikisi.sql":F,"../../../../packages/sema/migrations/0025_genel_gider.sql":f,"../../../../packages/sema/migrations/0026_maliyet_donemi.sql":H,"../../../../packages/sema/migrations/0027_muayene_suresi.sql":M,"../../../../packages/sema/migrations/0028_yeni_alan_dedektorleri.sql":h,"../../../../packages/sema/migrations/0029_acik_kayit_kapali_emir.sql":K,"../../../../packages/sema/migrations/0030_donem_maliyeti_urune_ozel.sql":G,"../../../../packages/sema/migrations/0031_stok_sayimi.sql":W,"../../../../packages/sema/migrations/0032_satis_teklifi.sql":P,"../../../../packages/sema/migrations/0033_baglam_auth_yetkisi.sql":$,"../../../../packages/sema/migrations/0034_dogrulanmis_kullanici.sql":x,"../../../../packages/sema/migrations/0035_kullanici_rol_izin.sql":B,"../../../../packages/sema/migrations/0036_search_path_sabit.sql":Y,"../../../../packages/sema/migrations/0037_durus_problem.sql":X,"../../../../packages/sema/migrations/0038_kesim_ayarlari.sql":j,"../../../../packages/sema/migrations/0039_firma_gunu.sql":J,"../../../../packages/sema/migrations/0040_artik_havuzu.sql":q,"../../../../packages/sema/migrations/0041_agacta_kullanilan_agacsiz.sql":V,"../../../../packages/sema/migrations/0042_kullanici_kaynak.sql":w,"../../../../packages/sema/migrations/0043_agacsiz_planlanmaz_haric.sql":Z,"../../../../packages/sema/migrations/0044_is_merkezi_takvim.sql":Q,"../../../../packages/sema/migrations/0045_kod_sablonu_tip_kapsami.sql":ii,"../../../../packages/sema/migrations/0046_bolum_istasyon.sql":ai,"../../../../packages/sema/migrations/0047_kullanici_sifre_degismeli.sql":ei,"../../../../packages/sema/migrations/0048_fason_tarifesi_agirlik.sql":ni,"../../../../packages/sema/migrations/0049_bolum_saat_maliyeti.sql":ri,"../../../../packages/sema/migrations/0050_saha_kaydi_geri_al.sql":ki,"../../../../packages/sema/migrations/0051_varsayim_gorunurlugu.sql":li,"../../../../packages/sema/migrations/0052_kod_sablonu_planlanmaz_haric.sql":ti,"../../../../packages/sema/migrations/0053_yabanci_anahtar_indeksleri.sql":si,"../../../../packages/sema/migrations/0054_varsayim_gorunumu_hizi.sql":Ei,"../../../../packages/sema/migrations/0055_dedektor_kume_isaretleme.sql":di,"../../../../packages/sema/migrations/0056_agirlik_kume_hesabi.sql":mi,"../../../../packages/sema/migrations/0058_recete_denetimi.sql":oi,"../../../../packages/sema/migrations/0059_kurulum_kontrol.sql":ui,"../../../../packages/sema/migrations/0060_kurulum_kontrol_saha.sql":_i}),s=Object.assign({"../../../../packages/sema/firma/demo/0001_demo_as.sql":Ni,"../../../../packages/sema/firma/demo/0002_demo_rota.sql":Li,"../../../../packages/sema/firma/demo/0003_demo_fason_gun.sql":Ti,"../../../../packages/sema/firma/demo/0004_demo_tedarik.sql":yi,"../../../../packages/sema/firma/demo/0005_demo_fason_fiyat.sql":ci,"../../../../packages/sema/firma/demo/0006_demo_lot_kalite.sql":gi,"../../../../packages/sema/firma/demo/0007_demo_acilis_degeri.sql":Ri,"../../../../packages/sema/firma/demo/0008_demo_kur_genel_gider.sql":Ai,"../../../../packages/sema/firma/demo/0009_demo_kaynak_teli_adim.sql":Oi,"../../../../packages/sema/firma/demo/0010_demo_teklif_sayim.sql":Ii,"../../../../packages/sema/firma/demo/0011_demo_saha_durus.sql":bi,"../../../../packages/sema/firma/demo/0012_demo_kesim_artik.sql":Si,"../../../../packages/sema/firma/ozler/0001_kurallar_ve_alanlar.sql":pi,"../../../../packages/sema/firma/ozler/0002_kod_sablonu_kapsami.sql":Ui,"../../../../packages/sema/firma/ozler/0003_mamul_kod_serbest.sql":Ci});async function fi(i){const n=await crypto.subtle.digest("SHA-256",new TextEncoder().encode(Di(i)));return[...new Uint8Array(n)].map(a=>a.toString(16).padStart(2,"0")).join("")}async function E(i,n){const a=[];for(const[r,e]of Object.entries(i)){const l=r.split("/").pop();if(!zi.test(l))continue;const k=n(r);k!==null&&a.push({surum:k+l.replace(/\.sql$/,""),icerik:e,checksum:await fi(e)})}return a.sort((r,e)=>r.surum<e.surum?-1:1)}function Hi(){return E(Fi,()=>"")}function hi(){return[...new Set(Object.keys(s).map(i=>i.split("/").at(-2)))].sort()}function Mi(i){return E(s,n=>n.split("/").at(-2)===i?`firma:${i}/`:null)}async function Ki(i,n){const a=await t(i,await Hi());if(!n)return a;const r=await t(i,await Mi(n));return{uygulanan:[...a.uygulanan,...r.uygulanan],atlanan:[...a.atlanan,...r.atlanan]}}export{Hi as cekirdekMigrationlari,Mi as firmaMigrationlari,hi as firmaPaketleri,Ki as kur};
+`;function vi(i){return i.replace(/\r\n/g,`
+`)}const Fi=/^(\d{4})_[a-z0-9_]+\.sql$/;async function fi(i){const{rows:n}=await i.query("SELECT to_regclass('sistem.sema_surum') IS NOT NULL AS var");if(!n[0].var)return new Map;const a=await i.query("SELECT surum, checksum FROM sistem.sema_surum");return new Map(a.rows.map(r=>[r.surum,r.checksum]))}async function t(i,n){const a={uygulanan:[],atlanan:[]},r=await fi(i);for(const e of n){const l=r.get(e.surum);if(l){if(l!==e.checksum)throw new Error(`Sema surumu ${e.surum} uygulandiktan sonra DEGISTIRILMIS (checksum farkli). Uygulanmis migration yeniden yazilmaz; degisikligi yeni bir dosyayla yapin.`);a.atlanan.push(e.surum);continue}await i.exec("BEGIN");try{await i.exec(e.icerik),await i.query("INSERT INTO sistem.sema_surum (surum, checksum) VALUES ($1, $2)",[e.surum,e.checksum]),await i.exec("COMMIT")}catch(k){throw await i.exec("ROLLBACK"),k.message=`${e.surum} uygulanamadi: ${k.message}`,k}a.uygulanan.push(e.surum)}return a}const Hi=Object.assign({"../../../../packages/sema/migrations/0001_sistem_temel.sql":d,"../../../../packages/sema/migrations/0002_olay_defteri.sql":m,"../../../../packages/sema/migrations/0003_kural_sozlugu.sql":o,"../../../../packages/sema/migrations/0004_alan_katalogu.sql":u,"../../../../packages/sema/migrations/0005_cekirdek_varliklar.sql":_,"../../../../packages/sema/migrations/0006_gorunum_tema.sql":N,"../../../../packages/sema/migrations/0007_tohum.sql":y,"../../../../packages/sema/migrations/0008_canli_dedektor.sql":L,"../../../../packages/sema/migrations/0009_etki_analizi.sql":T,"../../../../packages/sema/migrations/0010_olay_defteri_yetki.sql":c,"../../../../packages/sema/migrations/0011_koyu_tema_cizgi_kontrasti.sql":g,"../../../../packages/sema/migrations/0012_katalog_zorunlu_kolonlar.sql":R,"../../../../packages/sema/migrations/0013_dedektor_indeks_kosulu.sql":A,"../../../../packages/sema/migrations/0014_urun_agaci_baglam.sql":O,"../../../../packages/sema/migrations/0015_emir_baglami_ve_satir_kalani.sql":I,"../../../../packages/sema/migrations/0016_geri_al_defter_ters_kayit.sql":b,"../../../../packages/sema/migrations/0017_operasyon_katalogu.sql":S,"../../../../packages/sema/migrations/0018_rota_adim_fason_gun.sql":p,"../../../../packages/sema/migrations/0019_tedarik_kosulu.sql":U,"../../../../packages/sema/migrations/0020_rota_adim_fason_fiyat.sql":C,"../../../../packages/sema/migrations/0021_lot_kalite_izlenebilirlik.sql":D,"../../../../packages/sema/migrations/0022_operasyon_kaydi.sql":z,"../../../../packages/sema/migrations/0023_kur.sql":v,"../../../../packages/sema/migrations/0024_fire_malzeme_cikisi.sql":F,"../../../../packages/sema/migrations/0025_genel_gider.sql":f,"../../../../packages/sema/migrations/0026_maliyet_donemi.sql":H,"../../../../packages/sema/migrations/0027_muayene_suresi.sql":M,"../../../../packages/sema/migrations/0028_yeni_alan_dedektorleri.sql":h,"../../../../packages/sema/migrations/0029_acik_kayit_kapali_emir.sql":K,"../../../../packages/sema/migrations/0030_donem_maliyeti_urune_ozel.sql":W,"../../../../packages/sema/migrations/0031_stok_sayimi.sql":G,"../../../../packages/sema/migrations/0032_satis_teklifi.sql":P,"../../../../packages/sema/migrations/0033_baglam_auth_yetkisi.sql":$,"../../../../packages/sema/migrations/0034_dogrulanmis_kullanici.sql":x,"../../../../packages/sema/migrations/0035_kullanici_rol_izin.sql":B,"../../../../packages/sema/migrations/0036_search_path_sabit.sql":Y,"../../../../packages/sema/migrations/0037_durus_problem.sql":X,"../../../../packages/sema/migrations/0038_kesim_ayarlari.sql":j,"../../../../packages/sema/migrations/0039_firma_gunu.sql":J,"../../../../packages/sema/migrations/0040_artik_havuzu.sql":q,"../../../../packages/sema/migrations/0041_agacta_kullanilan_agacsiz.sql":V,"../../../../packages/sema/migrations/0042_kullanici_kaynak.sql":w,"../../../../packages/sema/migrations/0043_agacsiz_planlanmaz_haric.sql":Z,"../../../../packages/sema/migrations/0044_is_merkezi_takvim.sql":Q,"../../../../packages/sema/migrations/0045_kod_sablonu_tip_kapsami.sql":ii,"../../../../packages/sema/migrations/0046_bolum_istasyon.sql":ai,"../../../../packages/sema/migrations/0047_kullanici_sifre_degismeli.sql":ei,"../../../../packages/sema/migrations/0048_fason_tarifesi_agirlik.sql":ni,"../../../../packages/sema/migrations/0049_bolum_saat_maliyeti.sql":ri,"../../../../packages/sema/migrations/0050_saha_kaydi_geri_al.sql":ki,"../../../../packages/sema/migrations/0051_varsayim_gorunurlugu.sql":li,"../../../../packages/sema/migrations/0052_kod_sablonu_planlanmaz_haric.sql":ti,"../../../../packages/sema/migrations/0053_yabanci_anahtar_indeksleri.sql":si,"../../../../packages/sema/migrations/0054_varsayim_gorunumu_hizi.sql":Ei,"../../../../packages/sema/migrations/0055_dedektor_kume_isaretleme.sql":di,"../../../../packages/sema/migrations/0056_agirlik_kume_hesabi.sql":mi,"../../../../packages/sema/migrations/0058_recete_denetimi.sql":oi,"../../../../packages/sema/migrations/0059_kurulum_kontrol.sql":ui,"../../../../packages/sema/migrations/0060_kurulum_kontrol_saha.sql":_i,"../../../../packages/sema/migrations/0061_kurulum_kontrol_varsayim.sql":Ni,"../../../../packages/sema/migrations/0062_geri_al_negatif_stok.sql":yi}),s=Object.assign({"../../../../packages/sema/firma/demo/0001_demo_as.sql":Li,"../../../../packages/sema/firma/demo/0002_demo_rota.sql":Ti,"../../../../packages/sema/firma/demo/0003_demo_fason_gun.sql":ci,"../../../../packages/sema/firma/demo/0004_demo_tedarik.sql":gi,"../../../../packages/sema/firma/demo/0005_demo_fason_fiyat.sql":Ri,"../../../../packages/sema/firma/demo/0006_demo_lot_kalite.sql":Ai,"../../../../packages/sema/firma/demo/0007_demo_acilis_degeri.sql":Oi,"../../../../packages/sema/firma/demo/0008_demo_kur_genel_gider.sql":Ii,"../../../../packages/sema/firma/demo/0009_demo_kaynak_teli_adim.sql":bi,"../../../../packages/sema/firma/demo/0010_demo_teklif_sayim.sql":Si,"../../../../packages/sema/firma/demo/0011_demo_saha_durus.sql":pi,"../../../../packages/sema/firma/demo/0012_demo_kesim_artik.sql":Ui,"../../../../packages/sema/firma/ozler/0001_kurallar_ve_alanlar.sql":Ci,"../../../../packages/sema/firma/ozler/0002_kod_sablonu_kapsami.sql":Di,"../../../../packages/sema/firma/ozler/0003_mamul_kod_serbest.sql":zi});async function Mi(i){const n=await crypto.subtle.digest("SHA-256",new TextEncoder().encode(vi(i)));return[...new Uint8Array(n)].map(a=>a.toString(16).padStart(2,"0")).join("")}async function E(i,n){const a=[];for(const[r,e]of Object.entries(i)){const l=r.split("/").pop();if(!Fi.test(l))continue;const k=n(r);k!==null&&a.push({surum:k+l.replace(/\.sql$/,""),icerik:e,checksum:await Mi(e)})}return a.sort((r,e)=>r.surum<e.surum?-1:1)}function hi(){return E(Hi,()=>"")}function Wi(){return[...new Set(Object.keys(s).map(i=>i.split("/").at(-2)))].sort()}function Ki(i){return E(s,n=>n.split("/").at(-2)===i?`firma:${i}/`:null)}async function Gi(i,n){const a=await t(i,await hi());if(!n)return a;const r=await t(i,await Ki(n));return{uygulanan:[...a.uygulanan,...r.uygulanan],atlanan:[...a.atlanan,...r.atlanan]}}export{hi as cekirdekMigrationlari,Ki as firmaMigrationlari,Wi as firmaPaketleri,Gi as kur};
