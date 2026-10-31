@@ -1,0 +1,1 @@
+const e=()=>{throw new Error("Bu derlemede şema kurulumu yok: sunucu kipinde çalışır.")},a=e;async function n(r,t){const u=await a();return await r.query("SELECT sistem.baglam_kur('uygulama', NULL, NULL, NULL, NULL, true)"),u}export{n as yerelKur};
