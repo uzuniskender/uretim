@@ -1,0 +1,1 @@
+var t=(e,r)=>()=>(e&&(r=e(e=0)),r),a=t(()=>{});a();var s=async(e,r)=>({bundlePath:new URL(""+new URL("btree_gist.tar-C-0e44bC.gz",import.meta.url).href,import.meta.url)}),n={name:"btree_gist",setup:s};export{n as btree_gist};

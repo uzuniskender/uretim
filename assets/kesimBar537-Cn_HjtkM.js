@@ -1,0 +1,1 @@
+const e={"h.cbd69795":"Moving a leftover piece needs a positive quantity and exactly one measured lot.","h.64f740c9":"The cutting plan target cannot be accepted: production has started, the order is closed, data is missing or the target is below recorded production.","h.1d39d95e":"Cutting plan output changed; refresh the preview. Nothing was written."};export{e as EN};
